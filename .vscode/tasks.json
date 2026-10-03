@@ -1,0 +1,109 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "CFD: Build All (Fast Parallel)",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--build", "build", "--parallel"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "CFD: Build All Libraries",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--build", "build", "--target", "cfd_all_libraries", "--parallel"],
+            "group": "build",
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "CFD: Build Explicit_FTCS",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--build", "build", "--target", "Explicit_FTCS"],
+            "group": "build",
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "CFD: Build Explicit_DuFortFrankel",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--build", "build", "--target", "Explicit_DUFORT_FRANKEL"],
+            "group": "build",
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "CFD: Build Implicit_Laasonen",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--build", "build", "--target", "Implicit_Laasonen"],
+            "group": "build",
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "CFD: Build Implicit_CrankNicolson",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--build", "build", "--target", "Implicit_CrankNicolson"],
+            "group": "build",
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "CFD: Build Core Only",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--build", "build", "--target", "cfd_core"],
+            "group": "build",
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "CFD: Configure CMake",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "-B", "build",
+                "-S", ".",
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "CFD: Clean Project",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--build", "build", "--target", "clean"],
+            "problemMatcher": []
+        },
+        {
+            "label": "CFD: Generate & View Target Dependency Graph",
+            "type": "shell",
+            "command": "cmake -B build --graphviz=build/deps.dot && dot -Tpng build/deps.dot -o build/dependencies.png && xdg-open build/dependencies.png",
+            "group": "none",
+            "problemMatcher": [],
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "CFD: Show Project Header Dependencies (Clean)",
+            "type": "shell",
+            "command": "g++ -std=c++20 -H -fsyntax-only -I./include -I./src ${file} 2>&1 | grep -v '/usr/'",
+            "group": "none",
+            "problemMatcher": ["$gcc"],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared"
+            }
+        }
+    ]
+}
