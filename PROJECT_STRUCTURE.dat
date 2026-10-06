@@ -1,0 +1,326 @@
+PROJECT STRUCTURE AND ARCHITECTURE MAP
+======================================
+
+Project: Transient_Diffusion2D_FDM_Solvers_Cpp
+Domain: Two-dimensional transient diffusion solved with finite-difference methods.
+Language: C++20.
+Build system: CMake 3.20 or newer.
+Primary include convention: project-root-relative paths, for example
+  #include "Core/Field/Field.hpp"
+
+PURPOSE AND READING GUIDE
+-------------------------
+This file describes the current source layout, module responsibilities, numerical
+conventions, simulation data flow, and CMake targets. It is intended as a compact
+architecture guide for developers and AI coding assistants.
+
+- .hpp files declare interfaces, data structures, inline utilities, and templates.
+- .cpp files contain out-of-line implementations and are listed in CMake targets.
+- [entry point] marks a translation unit containing main().
+- Results/, bin/, and build/ contain runtime or generated artifacts and are summarized.
+- The repository root is added as an include directory to project libraries/executables.
+- README files are not required to interpret this map.
+
+CURRENT SOURCE TREE
+-------------------
+.
+|-- CMakeLists.txt                                      # CMake libraries, executables, compiler options
+|-- PROJECT_STRUCTURE.dat                               # This architecture map
+|-- Template.dat                                         # Architecture-map formatting/example template
+|-- .clangd                                              # clangd configuration
+|-- .gitignore                                           # Git ignore rules
+|-- .vscode/
+|   |-- launch.json                                     # VS Code launch configurations
+|   |-- settings.json                                   # VS Code workspace/editor settings
+|   `-- tasks.json                                      # Build and workspace tasks
+|-- Config/
+|   `-- SolverInputs.hpp                                # Compile-time physical, mesh, initial, and boundary inputs
+|-- Core/
+|   |-- Boundary/
+|   |   |-- Boundary.hpp                                # Boundary values and metadata
+|   |   |-- Boundary.cpp                                # Boundary construction and value assignment
+|   |   `-- BoundaryManager/BoundaryManager.hpp         # Boundary type, orientation, and location enums
+|   |-- Field/
+|   |   |-- Field.hpp                                   # 2D row-major scalar field and boundary/field operations
+|   |   |-- Field.cpp                                   # Field initialization, row/column assignment, printing
+|   |   `-- FieldName/FieldName.hpp                     # Field identifiers for output names
+|   |-- Geometry/
+|   |   |-- Geometry.hpp                                # Rectangular domain dimensions
+|   |   |-- Geometry.cpp                                # Geometry implementation
+|   |   `-- assets/                                     # Geometry illustration assets
+|   `-- Mesh/
+|       |-- Mesh.hpp                                    # 2D mesh interface and coordinate access
+|       |-- Mesh.cpp                                    # Uniform mesh construction and coordinates
+|       `-- assets/                                     # Computational-grid illustration assets
+|-- ADI/
+|   |-- SweepDirection/SweepDirection.hpp               # X/Y sweep selector
+|   |-- Field1D/
+|   |   |-- Field1D.hpp                                 # 1D row/column field used by ADI sweeps
+|   |   `-- Field1D.cpp                                 # Direction-dependent 1D field sizing
+|   `-- Discretization/
+|       |-- Boundary/
+|       |   |-- XSweepBoundary/
+|       |   |   |-- XEnforceBoundary.hpp                # X-sweep boundary enforcement API
+|       |   |   `-- XEnforceBoundary.cpp                # X-sweep matrix/RHS boundary handling
+|       |   `-- YSweepBoundary/
+|       |       |-- YEnforceBoundary.hpp                # Y-sweep boundary enforcement API
+|       |       `-- YEnforceBoundary.cpp                # Y-sweep matrix/RHS boundary handling
+|       |-- Laasonen/
+|       |   |-- XSweepAssembler/
+|       |   |   |-- XSweepAssembler.hpp                 # Laasonen X-sweep assembly API
+|       |   |   `-- XSweepAssembler.cpp                 # Implicit X / explicit Y first half-step
+|       |   `-- YSweepAssembler/
+|       |       |-- YSweepAssembler.hpp                 # Laasonen Y-sweep assembly API
+|       |       `-- YSweepAssembler.cpp                 # Explicit X / implicit Y second half-step
+|       `-- CrankNicolson/
+|           |-- XSweepAssembler/
+|           |   |-- XSweepAssembler.hpp                 # Crank-Nicolson X-sweep assembly API
+|           |   `-- XSweepAssembler.cpp                 # Peaceman-Rachford first half-step assembly
+|           `-- YSweepAssembler/
+|               |-- YSweepAssembler.hpp                 # Crank-Nicolson Y-sweep assembly API
+|               `-- YSweepAssembler.cpp                 # Peaceman-Rachford second half-step assembly
+|-- Discretization/
+|   |-- SolverScheme/SolverScheme.hpp                    # FTCS, DuFort-Frankel, Laasonen, Crank-Nicolson IDs
+|   |-- Explicit/
+|   |   |-- FTCS/
+|   |   |   |-- FTCS.hpp                                # FTCS update interface
+|   |   |   |-- FTCS.cpp                                # FTCS update implementation
+|   |   |   `-- FTCS_Stability.hpp                       # FTCS stability handling
+|   |   `-- DuFortFrankel/
+|   |       |-- DuFortFrankel.hpp                       # DuFort-Frankel update/coefficient API
+|   |       `-- DuFortFrankel.cpp                       # DuFort-Frankel update implementation
+|   `-- Implicit/
+|       |-- Boundary/
+|       |   |-- EnforceBoundary.hpp                     # Non-ADI implicit boundary API
+|       |   `-- EnforceBoundary.cpp                     # Non-ADI implicit boundary implementation
+|       |-- CrankNicolson/
+|       |   |-- CrankNicolsonAssembler.hpp              # Non-ADI Crank-Nicolson assembler API
+|       |   `-- CrankNicolsonAssembler.cpp              # Non-ADI Crank-Nicolson assembly
+|       `-- Laasonen/
+|           |-- LaasonenAssembler.hpp                   # Non-ADI Laasonen assembler API
+|           `-- LaasonenAssembler.cpp                   # Non-ADI Laasonen assembly
+|-- LinearSolvers/
+|   |-- GaussianElimination/
+|   |   |-- GaussianElimination.hpp                     # Dense-system solver API
+|   |   `-- GaussianElimination.cpp                     # Dense Gaussian elimination implementation
+|   |-- ThomasAlgorithm/
+|   |   |-- ThomasAlgorithm.hpp                         # Tridiagonal-system solver API
+|   |   `-- ThomasAlgorithm.cpp                         # Thomas algorithm implementation
+|   `-- Matrix/
+|       |-- ADI_Matrix/
+|       |   |-- RHS/
+|       |   |   |-- RHS.hpp                             # ADI direction-sized RHS vector
+|       |   |   `-- RHS.cpp                             # RHS construction
+|       |   `-- TridiagonalMatrix/
+|       |       |-- TridiagonalMatrix.hpp               # Lower/main/upper diagonal storage
+|       |       `-- TridiagonalMatrix.cpp               # Direction-sized matrix construction
+|       `-- GaussianElimination_Matrix/
+|           |-- CoefficientMatrix/
+|           |   |-- CoefficientMatrix.hpp               # Dense coefficient matrix
+|           |   `-- CoefficientMatrix.cpp               # Dense matrix construction
+|           `-- RHS/
+|               |-- RHS.hpp                             # Dense-solver RHS vector
+|               `-- RHS.cpp                             # Dense RHS construction
+|-- IO/
+|   |-- OutputWriter/
+|   |   |-- FileWriter/
+|   |   |   |-- FileWriter.hpp                         # Field file-output API
+|   |   |   `-- FileWriter.cpp                         # Field output implementation
+|   |   |-- FileName/FileName.hpp                      # Output file-name construction
+|   |   |-- Label/Label.hpp                            # Output labels and conversions
+|   |   `-- Legend/Legend.hpp                          # Plot legend construction
+|   |-- PathManager/
+|   |   |-- PathManager/PathManager.hpp                # Output-directory path construction
+|   |   `-- PathType/PathType.hpp                      # Output category/scheme identifiers
+|   `-- Visualization/gnuplot/
+|       |-- ContourPlot/
+|       |   |-- ContourPlot.hpp                         # Contour plot interface
+|       |   `-- ContourPlot.cpp                         # Contour plotting implementation
+|       |-- LinePlot/
+|       |   |-- LinePlot.hpp                            # Saved line plot interface
+|       |   `-- LinePlot.cpp                            # Line plotting implementation
+|       `-- LivePointPlotter/
+|           |-- LivePointPlotter.hpp                    # Live convergence plot interface
+|           `-- LivePointPlotter.cpp                    # Live point plotting implementation
+|-- SimulationSetup/
+|   |-- ADI_Method/
+|   |   |-- ADI.hpp                                    # Shared ADI sweep state (fields/matrix/RHS)
+|   |   `-- ADI.cpp                                    # ADI state construction
+|   |-- SimulationBoundaries/
+|   |   |-- SimulationBoundaries.hpp                   # Domain boundary objects
+|   |   `-- SimulationBoundaries.cpp                   # Configured boundary construction
+|   |-- SimulationContext/
+|   |   |-- SimulationContext.hpp                      # Shared simulation state and lifecycle interface
+|   |   `-- SimulationContext.cpp                      # Startup, BC, convergence, output, and plotting flow
+|   |-- SimulationParams/
+|   |   |-- SimulationParams.hpp                       # Physical, grid, and solver parameter members
+|   |   `-- SimulationParams.cpp                       # Parameter initialization from config and mesh
+|   `-- PostProcessing/PlotDashboard/Plot/
+|       |-- Plot.hpp                                   # Aggregates live, line, and contour plotters
+|       `-- Plot.cpp                                   # Plot dashboard construction
+|-- Utilities/
+|   |-- Convergence/RelativeFieldChange/
+|   |   |-- FieldChange.hpp                            # Relative field-change API
+|   |   |-- FieldChange.cpp                            # Relative field-change implementation
+|   |   `-- TimeScale/TimeScale.hpp                    # Diffusion characteristic time helper
+|   |-- KeyboardHandler/KeyboardHandler.hpp            # Escape-key polling
+|   |-- Parameter/Parameter.hpp                        # Typed parameter wrapper
+|   `-- StatusPrinter/StatusPrinter.hpp                # Iteration and convergence status output
+|-- Verification/AnalyticalSolution/
+|   |-- AnalyticalSolution.hpp                         # Analytical solution API
+|   `-- AnalyticalSolution.cpp                         # Analytical transient/steady reference implementation
+|-- main/
+|   |-- Explicit_FTCS.cpp                              # [entry point] FTCS solver executable
+|   |-- Explicit_DUFORT_FRANKEL.cpp                    # [entry point] DuFort-Frankel solver executable
+|   |-- Implicit_Laasonen.cpp                          # [entry point] Laasonen ADI solver executable
+|   `-- Implicit_CrankNicolson.cpp                     # [entry point] Crank-Nicolson ADI solver executable
+`-- Results/                                           # Generated field snapshots, grouped by category/scheme
+    |-- Initial_Field/
+    |-- Analytical_Field/
+    `-- Numerical_Field/
+        |-- FTCS/
+        |-- DUFORT_FRANKEL/
+        |-- Laasonen/
+        `-- CrankNicolson/
+
+NUMERICAL MODEL AND CURRENT DEFAULT INPUTS
+-------------------------------------------
+The equation is the two-dimensional transient diffusion equation on a rectangle:
+
+  dT/dt = alpha * (d2T/dx2 + d2T/dy2)
+
+Current compile-time inputs in Config/SolverInputs.hpp:
+- Width = 0.04 m and Height = 0.04 m.
+- alpha = 0.001 m^2/s.
+- Nx = 70 and Ny = 70 nodes; N = Nx * Ny.
+- Requested dt = 0.001 s, maximum configured time levels = 20000.
+- Steady-state tolerance = 1e-6.
+- Initial profile is zero at all nodes before boundary values are applied.
+- Dirichlet values: Top=0, Bottom=200, Right=0, Left=200.
+
+SimulationParams derives DeltaX and DeltaY from the mesh and defines
+DiffNumberX = alpha*dt/DeltaX^2 and DiffNumberY = alpha*dt/DeltaY^2.
+The mesh and field use the same node dimensions Nx by Ny.
+
+INDEXING AND BOUNDARY CONVENTIONS
+---------------------------------
+- Field[j][i] is row-major: j indexes the vertical y direction and i the horizontal x direction.
+- i=0 is the left edge; i=Nx-1 is the right edge.
+- j=0 is the bottom edge; j=Ny-1 is the top edge.
+- Field stores Nx*Ny scalar nodal values; Field1D stores a complete row or column for ADI.
+- SimulationContext applies initial/final field boundaries in this order: TopWall, BottomWall,
+  RightWall, LeftWall. At corners where configured values conflict, the later assignment wins.
+- Current configured boundaries are Dirichlet. Enum support for other types does not guarantee
+  that all solver paths implement Neumann or Robin conditions.
+
+NUMERICAL SCHEMES AND ADI SPLITTING
+-----------------------------------
+SolverScheme identifies FTCS, DUFORT_FRANKEL, Laasonen, and CrankNicolson.
+The corresponding executable entry points are in main/.
+
+ADI uses two one-dimensional tridiagonal solves per full time step. For each interior row,
+the X sweep solves for all interior i values; for each interior column, the Y sweep solves
+for all interior j values. The explicit transverse contribution is added to each sweep's RHS.
+
+Laasonen ADI:
+1. X half-step: X is implicit and Y is explicit; T^n advances to intermediate T*.
+2. Y half-step: Y is implicit and X is explicit; T* advances to T^(n+1).
+The sweep assembly functions are under ADI/Discretization/Laasonen/.
+
+Crank-Nicolson ADI uses Peaceman-Rachford directional splitting:
+1. X half-step: X is implicit at the intermediate level, with explicit Y contribution from T^n.
+2. Y half-step: Y is implicit at the new level, with explicit X contribution from T*.
+The sweep assembly functions are under ADI/Discretization/CrankNicolson/.
+The inputs named DiffNumberX and DiffNumberY use the full dt; each half-step assembly
+uses the corresponding half-step coefficients.
+
+For both ADI schemes, the main program assembles a tridiagonal matrix, enforces its
+Dirichlet end rows, assembles and boundary-adjusts each RHS, solves with ThomasAlgorithm,
+and copies each 1D solution back into the intermediate or new 2D field.
+Boundary enforcement for these ADI line systems is in ADI/Discretization/Boundary/.
+
+ARCHITECTURAL RESPONSIBILITIES AND DATA FLOW
+--------------------------------------------
+1. Config owns compile-time geometry, physics, mesh, initial-condition, boundary, and solver inputs.
+2. Core provides Geometry, Mesh, Boundary metadata, and the 2D Field representation.
+3. SimulationSetup constructs shared parameters, boundaries, plot dashboard, ADI work arrays,
+   and SimulationContext state.
+4. Discretization contains explicit update methods and non-ADI implicit assemblers.
+   ADI directional assemblers are grouped separately under ADI/Discretization/.
+5. LinearSolvers provides dense/tridiagonal storage and Gaussian-elimination/Thomas solvers.
+6. Utilities provides parameter, convergence, time-scale, status, and keyboard helpers.
+7. Verification computes analytical fields for comparison with numerical results.
+8. IO constructs output names/paths, writes fields, and drives gnuplot contour, line, and live plots.
+9. main selects a scheme, performs scheme-specific time stepping, and calls common context services.
+
+Typical startup and step flow:
+
+  SolverInputs
+    -> Geometry and Mesh
+    -> SimulationParams, SimulationBoundaries, SimulationContext, Plot, and ADI state
+    -> initial field and configured boundary values
+    -> scheme-specific update or two ADI line sweeps
+    -> boundary application and relative-field-change calculation
+    -> field state swap and live convergence point
+    -> steady-state output and analytical comparison when tolerance is reached
+
+SimulationContext owns T_0, T_1, T_nMinus1, T_n, T_nPlus1, T_SteadyState, and
+T_Analytical_n. One-step methods start from T_0 copied/swapped into T_n and produce T_nPlus1;
+common processing applies boundaries, calculates convergence, and advances the field state.
+DuFort-Frankel additionally uses the previous field T_nMinus1.
+
+The configured initial outputs include the initial field and steady analytical reference.
+At steady-state convergence, SimulationContext writes the numerical and analytical fields
+and adds their contours. The common loop currently adds live convergence points every 20
+steps; periodic output/contour helper calls exist but are commented out in Common().
+
+CMAKE TARGET ARCHITECTURE
+-------------------------
+CMake requires version 3.20 and C++20, exports compile_commands.json, directs executables
+to ${CMAKE_SOURCE_DIR}/bin, and enables IPO/LTO when supported. GCC/Clang targets use
+-Wall -Wextra -O3; MSVC targets use /W4 /O2. Project-root-relative includes are configured
+for each library and executable.
+
+Static libraries and public dependency flow:
+- cfd_core: Geometry.cpp, Boundary.cpp, Mesh.cpp, Field.cpp.
+- cfd_explicit: FTCS.cpp and DuFortFrankel.cpp; depends on cfd_core.
+- cfd_linear_solvers: GaussianElimination.cpp, ThomasAlgorithm.cpp, dense and ADI matrix/RHS
+  implementations; depends on cfd_core.
+- cfd_adi: Field1D.cpp, Laasonen and CrankNicolson X/Y assemblers, and ADI boundary enforcement;
+  depends on cfd_core and cfd_linear_solvers.
+- cfd_implicit: non-ADI implicit boundary, Crank-Nicolson, and Laasonen implementations;
+  depends on cfd_core and cfd_linear_solvers.
+- cfd_io: FileWriter.cpp, ContourPlot.cpp, LivePointPlotter.cpp, LinePlot.cpp; depends on cfd_core.
+- cfd_utilities: FieldChange.cpp; depends on cfd_core.
+- cfd_verification: AnalyticalSolution.cpp; depends on cfd_core.
+- cfd_simulation_setup: ADI.cpp, SimulationBoundaries.cpp, SimulationContext.cpp,
+  SimulationParams.cpp, and Plot.cpp; publicly depends on cfd_core, cfd_io, cfd_utilities,
+  cfd_verification, and cfd_adi.
+- cfd_all_libraries: aggregate custom target depending on all static library targets above.
+
+Executables:
+- Explicit_FTCS -> cfd_explicit and cfd_simulation_setup.
+- Explicit_DUFORT_FRANKEL -> cfd_explicit and cfd_simulation_setup.
+- Implicit_Laasonen -> cfd_implicit, cfd_linear_solvers, and cfd_simulation_setup.
+- Implicit_CrankNicolson -> cfd_implicit, cfd_linear_solvers, and cfd_simulation_setup.
+
+BUILD COMMANDS
+--------------
+Configure:
+  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+Build all libraries:
+  cmake --build build --target cfd_all_libraries --parallel
+
+Build all configured targets:
+  cmake --build build --parallel
+
+Build one solver, for example:
+  cmake --build build --target Implicit_Laasonen --parallel
+
+RUNTIME ARTIFACTS
+-----------------
+bin/ contains built executable files. Results/ contains generated data grouped into
+Initial_Field/, Analytical_Field/, and Numerical_Field/<scheme>/. Individual output
+snapshots are intentionally not enumerated here. build/ and compiler-generated metadata
+are also omitted from the source tree.
