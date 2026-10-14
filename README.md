@@ -2,123 +2,112 @@
 
 <p align="center">
   <img alt="C++20" src="https://img.shields.io/badge/C%2B%2B-20-00599C?logo=c%2B%2B&logoColor=white">
-  <img alt="License not specified" src="https://img.shields.io/badge/license-not%20specified-lightgrey">
-  <img alt="Build status not configured" src="https://img.shields.io/badge/build-status%20not%20configured-lightgrey">
+  <img alt="CMake" src="https://img.shields.io/badge/CMake-3.20%2B-064F8C?logo=cmake&logoColor=white">
+  <img alt="MIT License" src="https://img.shields.io/badge/License-MIT-green.svg">
+  <img alt="Build status not configured" src="https://img.shields.io/badge/Build%20Status-not%20configured-lightgrey">
 </p>
 
-**A finite-difference solver suite for two-dimensional, time-dependent heat and diffusion problems.**
+**A self-contained C++20 solver suite for two-dimensional transient heat conduction and diffusion.**
 
-This project is an advanced mechanical engineering and computational fluid dynamics (CFD) portfolio implementation. It brings together spatial discretization, time integration, boundary-condition handling, linear-system solution, analytical verification, and field visualization in a modular C++ codebase.
-
-> **Repository status:** No license file or continuous-integration workflow is present in this checkout. The corresponding badges report that status; replace them with the project’s selected license and CI workflow once those are established.
+Designed as an advanced mechanical engineering and computational fluid dynamics (CFD) portfolio project, this repository brings together finite-difference discretizations, time integration, boundary handling, linear-system solvers, analytical verification, and field visualization.
 
 ## Overview
 
-The code advances a scalar field \(T(x,y,t)\), such as temperature or concentration, over a two-dimensional mesh. The implementation includes explicit and implicit finite-difference approaches:
+The code evolves a scalar field \(T(x,y,t)\) on a two-dimensional Cartesian mesh. Four executable targets demonstrate explicit and implicit time-marching methods:
 
-| Scheme | Formulation | Notes |
+| Solver executable | Method | Description |
 | --- | --- | --- |
-| FTCS | Explicit, forward time / centered space | Includes a diffusion-number stability check and time-step stabilization. |
-| DuFort–Frankel | Explicit, three-time-level | Uses an FTCS start-up step before the DuFort–Frankel recurrence. |
-| Laasonen | Implicit, backward Euler | Advanced with alternating-direction line sweeps and tridiagonal solves. |
-| Crank–Nicolson | Implicit, trapezoidal time integration | Implemented with alternating-direction sweeps. |
+| `Explicit_FTCS` | FTCS | Forward-time, centered-space explicit update with diffusion stability handling. |
+| `Explicit_DUFORT_FRANKEL` | DuFort–Frankel | Explicit three-time-level scheme initialized using an FTCS step. |
+| `Implicit_Laasonen` | Laasonen / ADI | Backward-time implicit method advanced by alternating directional line sweeps. |
+| `Implicit_CrankNicolson` | Crank–Nicolson / ADI | Crank–Nicolson time discretization implemented through directional sweeps. |
 
-The project also contains shared mesh, field, geometry, boundary, and simulation setup components; Thomas and Gaussian-elimination linear solvers; analytical reference-solution support; output writers; and gnuplot-based live and contour visualization. The primary executables are defined in `main/` and built by CMake.
+The ADI (Alternating Direction Implicit) implementations split each two-dimensional update into one-dimensional sweeps. These sweeps assemble tridiagonal systems and solve them with the Thomas algorithm. Gaussian elimination and matrix utilities are also included for linear-system work and extension.
 
 ## Mathematical formulation
 
-For a homogeneous, isotropic medium with constant diffusivity \(\alpha\), the two-dimensional transient diffusion equation is
+For constant diffusivity \(\alpha\), the source-free 2D unsteady diffusion / heat conduction equation is
 
-\[
-\frac{\partial T}{\partial t}
-= \alpha\left(
-\frac{\partial^2 T}{\partial x^2}
-+\frac{\partial^2 T}{\partial y^2}
-\right) + S(x,y,t),
-\qquad (x,y)\in\Omega,\quad t>0,
-\]
+$$
+\frac{\partial T}{\partial t} = \alpha \left( \frac{\partial^2 T}{\partial x^2} + \frac{\partial^2 T}{\partial y^2} \right), \quad (x,y) \in [0, L_x] \times [0, L_y]
+$$
 
-where \(T\) is temperature (or a diffusing scalar), \(\alpha\) is the thermal diffusivity (or diffusivity), and \(S\) is an optional volumetric source term. The source-free model corresponds to \(S=0\). An initial field closes the transient problem:
+The initial condition is \(T(x,y,0)=T_0(x,y)\). A uniform grid with \(N_x\) and \(N_y\) nodes uses spacings
 
-\[
-T(x,y,0)=T_0(x,y),\qquad (x,y)\in\Omega.
-\]
+$$
+\Delta x = \frac{L_x}{N_x-1}, \qquad \Delta y = \frac{L_y}{N_y-1}.
+$$
 
-Boundary data may be specified in Dirichlet or Neumann form on the boundary \(\partial\Omega\):
+For time step \(\Delta t\), the directional diffusion Courant (Fourier) numbers are
 
-\[
-T = T_b(x,y,t) \quad\text{on }\Gamma_D,
-\qquad
-\frac{\partial T}{\partial n}=g(x,y,t) \quad\text{on }\Gamma_N,
-\qquad
-\partial\Omega=\Gamma_D\cup\Gamma_N,
-\]
+$$
+r_x = \frac{\alpha\,\Delta t}{\Delta x^2}, \qquad r_y = \frac{\alpha\,\Delta t}{\Delta y^2}.
+$$
 
-where \(\partial/\partial n\) denotes the outward normal derivative. The current `Config/SolverInputs.hpp` setup supplies wall values and therefore represents a Dirichlet case. The boundary components also provide the framework used to enforce boundary data during the solver sweeps.
+Boundary data are associated with the four domain walls (left, right, bottom, and top). The boundary model defines Dirichlet, Neumann, and Robin types; **the current solver enforcement supports Dirichlet wall values, while Neumann and Robin enforcement is not implemented yet**. The supplied configuration initializes all four walls as Dirichlet boundaries.
 
-On a uniform Cartesian grid, the interior Laplacian is approximated with centered second differences:
+## Numerical methods
 
-\[
-\left.\nabla^2T\right|_{i,j}^{n}
-\approx
-\frac{T_{i+1,j}^{n}-2T_{i,j}^{n}+T_{i-1,j}^{n}}{\Delta x^2}
-+\frac{T_{i,j+1}^{n}-2T_{i,j}^{n}+T_{i,j-1}^{n}}{\Delta y^2}.
-\]
+### Explicit schemes
+
+- **FTCS:** centered second differences in space and a forward difference in time. Its time step is checked against the diffusion stability condition and can be reduced for stable advancement.
+- **DuFort–Frankel:** uses values from two time levels and an FTCS start-up step to initialize its recurrence.
+
+### Implicit and ADI schemes
+
+- **Laasonen:** first-order implicit time discretization, assembled as alternating x- and y-direction line solves.
+- **Crank–Nicolson:** second-order centered time treatment, implemented with alternating directional sweeps.
+- **Thomas algorithm:** solves the tridiagonal systems generated by each ADI line sweep in linear work with respect to line length.
 
 ## Project structure
 
-Headers are kept alongside their implementations; this repository does not currently use a separate `include/` tree. There are no top-level `tests/` or `examples/` directories in this checkout.
+Headers are stored beside their implementations. The repository currently has no top-level `include/`, `tests/`, or `examples/` directory.
 
 ```text
 Transient_Diffusion2D_FDM_Solvers_Cpp/
-├── ADI/                          # ADI fields, sweep assemblers, sweep boundaries
-├── Config/                       # Solver input parameters and configuration notes
-├── Core/                         # Geometry, mesh, field, and boundary abstractions
+├── ADI/                           # ADI field storage, sweep assemblers, wall enforcement
+├── Config/                        # Solver input configuration and notes
+├── Core/                          # Geometry, mesh, field, and boundary types
 ├── Discretization/
-│   ├── Explicit/                  # FTCS and DuFort–Frankel implementations
-│   ├── Implicit/                  # Laasonen, Crank–Nicolson, boundary enforcement
-│   └── SolverScheme/              # Solver scheme identifiers
+│   ├── Explicit/                   # FTCS and DuFort–Frankel schemes
+│   ├── Implicit/                   # Laasonen, Crank–Nicolson, boundary enforcement
+│   └── SolverScheme/               # Scheme identifiers
 ├── IO/
-│   ├── OutputWriter/              # Field output and naming
-│   ├── PathManager/               # Result path handling
-│   └── Visualization/gnuplot/     # Live plots and contour plots
-├── LinearSolvers/                 # Thomas algorithm, Gaussian elimination, matrices
-├── main/                          # One entry point for each solver executable
-├── Results/                       # Initial, numerical, and analytical field outputs
-├── SimulationSetup/               # Parameters, boundaries, orchestration, post-processing
-├── Utilities/                     # Parameters, convergence, status, keyboard handling
-├── Verification/                  # Analytical reference solution
+│   ├── OutputWriter/               # Field output and labels
+│   ├── PathManager/                # Output path management
+│   └── Visualization/gnuplot/      # Live plots and contour visualization
+├── LinearSolvers/                  # Thomas algorithm, Gaussian elimination, matrices
+├── main/                           # Four solver application entry points
+├── Results/
+│   ├── Analytical_Field/           # Analytical reference fields
+│   ├── Initial_Field/              # Initial conditions written by a run
+│   └── Numerical_Field/            # Numerical solution output
+├── SimulationSetup/                # Parameters, boundaries, context, post-processing
+├── Utilities/                      # Convergence and runtime utilities
+├── Verification/                   # Analytical solution support
 ├── CMakeLists.txt
 └── README.md
 ```
 
-## Dependencies and prerequisites
+## Prerequisites
 
-- A C++20-capable compiler: GCC 10+ or Clang 10+ are reasonable baselines.
-- CMake 3.20 or newer.
-- Make (for the Makefile-based build commands below).
-- `gnuplot` for the live and contour visualization components.
-- The local sibling `cfd-toolkit` repository is part of the surrounding workspace context. **This project’s current `CMakeLists.txt` does not discover, include, or link it**; the components needed by the configured targets are built here as internal `cfd_*` libraries. No separate toolkit installation step is currently needed to build this checkout.
+- C++20 compiler (GCC or Clang)
+- CMake 3.20 or newer
+- Make, when using the Unix Makefiles generator
+- `gnuplot` available on `PATH` for live plotting and contour visualization
 
-No third-party numerical package is declared by the CMake configuration. To use visualization, install gnuplot and ensure the `gnuplot` executable is on `PATH`; headless runs can omit the plotting interaction only if the corresponding application code is adapted/configured for that use.
+All numerical modules used by the applications are maintained within this repository and are built as internal CMake library targets.
 
-## Build and run
+## Build and execution
 
-From the repository root, configure and build all four solvers:
+From the repository root, configure and build the project:
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ```
 
-The configured CMake generator defaults to the platform’s available generator. To explicitly use Make:
-
-```bash
-cmake -S . -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
-make -C build -j"$(nproc)"
-```
-
-Executables are written to the repository’s `bin/` directory. Run one from the project root so its relative output paths resolve as expected:
+The four executables are written to `bin/`. Run a solver from the project root so the configured result paths resolve correctly:
 
 ```bash
 ./bin/Explicit_FTCS
@@ -127,8 +116,19 @@ Executables are written to the repository’s `bin/` directory. Run one from the
 ./bin/Implicit_CrankNicolson
 ```
 
-The solver inputs—including domain dimensions, diffusivity, time step, number of time levels, mesh resolution, initial field, and wall values—are currently set in `Config/SolverInputs.hpp`. Results are written under `Results/`; plotting features invoke gnuplot at runtime.
+To explicitly generate Makefiles and build with Make instead:
 
-## Author and academic context
+```bash
+cmake -S . -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
+make -C build -j"$(nproc)"
+```
 
-This repository is presented as an advanced mechanical engineering / CFD computational portfolio project. It demonstrates the translation of transient diffusion models into finite-difference algorithms, comparison of explicit and implicit time-marching strategies, ADI-based line solves, treatment of boundary conditions, and comparison with analytical reference fields. The modular organization is intended to support numerical-method study, code review, and future extension to additional discretizations and physical models.
+## Configuration and output
+
+Edit [`Config/SolverInputs.hpp`](Config/SolverInputs.hpp) to configure the domain dimensions, diffusivity, number of time levels, time step, mesh resolution, initial field, and four wall-value arrays. The simulation setup uses these inputs to construct the mesh, fields, and solver parameters.
+
+Solver runs write initial and numerical field data under `Results/`; analytical reference fields are also available there for comparison. The IO modules produce field files and use gnuplot for live point/line plots and contour visualizations. Plotting requires a working gnuplot installation and a suitable graphical terminal.
+
+## Academic context
+
+This project is framed for an advanced mechanical engineering / CFD computational portfolio. It demonstrates numerical modeling of transient transport, a comparison of explicit and implicit finite-difference methods, ADI operator splitting, tridiagonal linear solves, boundary-condition treatment, and analytical-field verification in a modular C++ implementation.
