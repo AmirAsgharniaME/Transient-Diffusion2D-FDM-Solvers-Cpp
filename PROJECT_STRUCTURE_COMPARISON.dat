@@ -1,0 +1,293 @@
+PROJECT STRUCTURE COMPARISON
+============================
+
+Compared documents:
+- PROJECT_STRUCTURE.dat: Transient_Diffusion2D_FDM_Solvers_Cpp
+- Another_PROJECT_STRUCTURE.dat: Transient_Diffusion1D_FDM_Solvers_Cpp
+
+SCOPE AND EVIDENCE
+------------------
+This report is derived only from the two architecture-map files named above. It
+compares documented paths, responsibilities, numerical model descriptions, and
+CMake target descriptions. Source and header contents were not inspected, so
+"unchanged" means structurally equivalent and documented with the same role; it
+does not prove byte-for-byte source identity. Any shared code should therefore be
+validated separately before extracting it into a GitHub library.
+
+HIGH-LEVEL RELATIONSHIP
+-----------------------
+Both projects are C++20 finite-difference solvers for transient diffusion and use
+the same broad layered architecture:
+
+  Config -> Core -> Discretization -> LinearSolvers
+          -> SimulationSetup -> IO/Utilities/Verification -> main executables
+
+The current project is the two-dimensional evolution of the other documented
+architecture. It preserves most domain-independent infrastructure, changes the
+field/mesh model from one dimension to two dimensions, adds an ADI subsystem, and
+adds contour visualization. The other project is explicitly one-dimensional and
+uses a flatter, older matrix/plot directory layout in its documented tree.
+
+MODEL-LEVEL DIFFERENCES
+-----------------------
+
+Current project: two-dimensional transient diffusion
+- Rectangular domain with Width and Height.
+- Uniform Nx by Ny mesh and a row-major Field[j][i].
+- Boundary values on Top, Bottom, Right, and Left walls.
+- Directional X/Y ADI sweeps and one-dimensional line fields.
+- Contour, line, and live visualization.
+
+Other project: one-dimensional transient diffusion
+- One-dimensional domain length.
+- N-node mesh and one-dimensional field/profile.
+- Documented active setup uses top/bottom Dirichlet values for its 1D model.
+- No ADI directory or X/Y sweep subsystem is documented.
+- Live and saved line plotting are documented; contour plotting is not.
+
+STRUCTURALLY COMMON FILES AND MODULES
+-------------------------------------
+The following components appear in both maps with the same main responsibility.
+They are the strongest candidates for common GitHub libraries. Their documented
+source contents were not compared, so keep their APIs stable only after a source
+level review.
+
+1. Build and configuration foundations
+- CMakeLists.txt: CMake project configuration, target definitions, dependencies,
+  compiler settings, and executable output configuration.
+- .clangd: clangd configuration.
+- .gitignore: version-control ignore rules.
+- .vscode/launch.json and .vscode/tasks.json: editor launch/build task support.
+
+2. Core boundary metadata
+- Core/Boundary/Boundary.hpp and Boundary.cpp: boundary values and boundary object
+  construction.
+- Core/Boundary/BoundaryManager/BoundaryManager.hpp: boundary type, orientation,
+  and location enums.
+
+3. Core scalar-field infrastructure
+- Core/Field/Field.hpp and Field.cpp: discrete field storage and field operations.
+- Core/Field/FieldName/FieldName.hpp: identifiers used for output file naming.
+
+The responsibility is shared, but the storage contract differs: the current map
+documents a 2D row-major field and row/column operations, while the other map
+describes a 1D nodal field. A future common library should separate a generic field
+interface from dimensional storage.
+
+4. Domain and mesh abstractions
+- Core/Geometry/Geometry.hpp and Geometry.cpp.
+- Core/Mesh/Mesh.hpp and Mesh.cpp.
+
+The class roles are common, but the geometry and mesh contracts differ. The current
+project has rectangular Width/Height and Nx/Ny; the other has Length and N nodes.
+The implementation should therefore be shared only through dimension-independent
+validation and coordinate utilities, or through separate 1D/2D adapters.
+
+5. Scheme identification
+- Discretization/SolverScheme/SolverScheme.hpp.
+
+Both maps document FTCS, DuFort-Frankel, Laasonen, and Crank-Nicolson identifiers.
+The enum/name conversion is a strong common-library candidate if the public values
+and spelling remain compatible.
+
+6. Explicit discretization schemes
+- Discretization/Explicit/FTCS/FTCS.hpp and FTCS.cpp.
+- Discretization/Explicit/DuFortFrankel/DuFortFrankel.hpp and DuFortFrankel.cpp.
+- Discretization/Explicit/FTCS/FTCS_Stability.hpp.
+
+Both architectures document the same explicit scheme modules. The numerical kernels
+may still differ because a 1D stencil and a 2D stencil have different neighbors and
+diffusion numbers. The stability helper is a particularly good common candidate only
+if it is factored around a generic diffusion-number policy.
+
+7. Non-ADI implicit discretization modules
+- Discretization/Implicit/Boundary/EnforceBoundary.hpp and EnforceBoundary.cpp.
+- Discretization/Implicit/CrankNicolson/CrankNicolsonAssembler.hpp and .cpp.
+- Discretization/Implicit/Laasonen/LaasonenAssembler.hpp and .cpp.
+
+Both maps contain these module families. Their matrix assembly is likely dimension
+dependent, so the shared part is the scheme contract and scalar coefficient logic;
+the stencil and boundary assembly may need dimension-specific implementations.
+
+8. Linear solver algorithms
+- LinearSolvers/GaussianElimination/GaussianElimination.hpp and .cpp.
+- LinearSolvers/ThomasAlgorithm/ThomasAlgorithm.hpp and .cpp.
+
+The solver algorithms are documented with the same roles in both projects and are
+the best candidates for standalone, dimension-independent libraries. They operate
+on matrix/vector abstractions, so matrix storage API compatibility must be checked.
+
+9. Output naming and file writing
+- IO/OutputWriter/FileWriter/FileWriter.hpp and FileWriter.cpp.
+- IO/OutputWriter/FileName/FileName.hpp.
+- IO/OutputWriter/Label/Label.hpp.
+- IO/OutputWriter/Legend/Legend.hpp.
+- IO/PathManager/PathManager/PathManager.hpp.
+- IO/PathManager/PathType/PathType.hpp.
+
+Both maps document the same output responsibilities and naming/path concepts. The
+field serialization format may differ because the current project writes 2D field
+nodes while the other project is 1D. Path and naming helpers are strong candidates
+for a common IO support library; field writers should expose a dimension-neutral
+record iterator or separate 1D/2D adapters.
+
+10. Utilities
+- Utilities/Convergence/RelativeFieldChange/FieldChange.hpp and FieldChange.cpp.
+- Utilities/Convergence/RelativeFieldChange/TimeScale/TimeScale.hpp.
+- Utilities/KeyboardHandler/KeyboardHandler.hpp.
+- Utilities/Parameter/Parameter.hpp.
+- Utilities/StatusPrinter/StatusPrinter.hpp.
+
+The responsibility and documented paths are common. These are strong candidates for
+a shared utilities library, subject to checking naming and field-size assumptions.
+
+11. Analytical verification
+- Verification/AnalyticalSolution/AnalyticalSolution.hpp and .cpp.
+
+Both maps contain an analytical-solution module, but the mathematical solution is
+dimension and boundary-condition specific. Share only the verification interface,
+series helpers, or comparison utilities; keep the 1D and 2D solution kernels in
+separate packages.
+
+PATHS OR ORGANIZATION THAT DIFFER
+---------------------------------
+
+1. LinearSolvers matrix storage
+Other project documents:
+- LinearSolvers/Matrix/CoefficientMatrix/
+- LinearSolvers/Matrix/RHS/
+- LinearSolvers/Matrix/TridiagonalMatrix/
+
+Current project documents:
+- LinearSolvers/Matrix/GaussianElimination_Matrix/CoefficientMatrix/
+- LinearSolvers/Matrix/GaussianElimination_Matrix/RHS/
+- LinearSolvers/Matrix/ADI_Matrix/RHS/
+- LinearSolvers/Matrix/ADI_Matrix/TridiagonalMatrix/
+
+The current project separates dense Gaussian-elimination storage from ADI storage.
+This is an architectural refinement rather than a direct path-compatible layout.
+The reusable library boundary should be the matrix/vector interfaces and algorithms,
+with storage backends grouped by solver family.
+
+2. Plotting directories
+Other project documents:
+- IO/Visualization/gnuplot/LivePointPlotter/
+- IO/Visualization/gnuplot/LinePlot/
+
+Current project documents:
+- IO/Visualization/gnuplot/LivePointPlotter/
+- IO/Visualization/gnuplot/LinePlot/
+- IO/Visualization/gnuplot/ContourPlot/
+
+LivePointPlotter and LinePlot are structurally common. ContourPlot is current-project
+specific because it consumes 2D field data.
+
+3. Plot dashboard location
+Other project documents a plot dashboard under:
+- SimulationSetup/PostProcessing/Plot/Plot.hpp and Plot.cpp.
+
+Current project documents it under:
+- SimulationSetup/PostProcessing/PlotDashboard/Plot/Plot.hpp and Plot.cpp.
+
+The dashboard role is common, but the path and current composition differ. The
+current dashboard aggregates live, line, and contour plotters.
+
+4. Simulation setup
+Both maps contain SimulationParams, SimulationBoundaries, and SimulationContext.
+The current project additionally documents:
+- SimulationSetup/ADI_Method/ADI.hpp and ADI.cpp.
+
+The ADI state owner has no counterpart in the other project.
+
+5. Discretization organization
+The other map groups Laasonen and Crank-Nicolson directly under
+Discretization/Implicit/. The current project keeps those non-ADI assemblers there
+and adds separate directional ADI assemblers under ADI/Discretization/.
+
+6. Result layout
+Both maps document Initial_Field, Analytical_Field, and Numerical_Field outputs.
+The current map documents scheme-specific numerical directories for FTCS,
+DUFORT_FRANKEL, Laasonen, and CrankNicolson and is designed for 2D snapshots and
+contours. The other map documents the same scheme grouping without 2D/contour detail.
+
+CURRENT-PROJECT-ONLY COMPONENTS
+-------------------------------
+- ADI/SweepDirection/SweepDirection.hpp.
+- ADI/Field1D/Field1D.hpp and Field1D.cpp.
+- ADI/Discretization/Boundary/XSweepBoundary/ and YSweepBoundary/.
+- ADI/Discretization/Laasonen/XSweepAssembler/ and YSweepAssembler/.
+- ADI/Discretization/CrankNicolson/XSweepAssembler/ and YSweepAssembler/.
+- SimulationSetup/ADI_Method/ADI.hpp and ADI.cpp.
+- IO/Visualization/gnuplot/ContourPlot/ContourPlot.hpp and ContourPlot.cpp.
+- 2D wall configuration and row/column field operations.
+- cfd_adi and the cfd_all_libraries aggregate target.
+
+OTHER-PROJECT-ONLY OR NOT DOCUMENTED IN CURRENT MAP
+----------------------------------------------------
+- The other project describes a one-dimensional Geometry/Length and Mesh/N contract.
+- The other project documents a flat Matrix/CoefficientMatrix, Matrix/RHS, and
+  Matrix/TridiagonalMatrix layout that is not the current layout.
+- The other project does not document an ADI subsystem or ContourPlot module.
+- The other project documents its plot dashboard at SimulationSetup/PostProcessing/Plot/.
+- The current project does not document those old flat matrix paths or that old
+  dashboard path.
+
+LIBRARY EXTRACTION RECOMMENDATION
+---------------------------------
+The following shared libraries can be planned with the lowest coupling:
+
+1. cfd_common_utilities
+   Parameter, status, keyboard, time-scale, and relative-change utilities.
+
+2. cfd_linear_algebra
+   ThomasAlgorithm, GaussianElimination, RHS abstractions, and matrix interfaces.
+   Keep dense and ADI storage adapters separate where their dimensions differ.
+
+3. cfd_io_support
+   FileName, Label, Legend, PathManager, PathType, and generic field record writing.
+   Put 1D/2D serialization adapters behind a common writer contract.
+
+4. cfd_scheme_contracts
+   SolverScheme identifiers, generic time-step interfaces, and shared stability/
+   coefficient helpers. Keep 1D/2D stencil implementations in separate modules.
+
+5. cfd_core_geometry_boundary
+   Boundary metadata, enum types, geometry validation, and coordinate utilities.
+   Provide separate 1D and 2D geometry/mesh implementations behind common concepts.
+
+6. cfd_plotting_core
+   Shared gnuplot process/data handling, LivePointPlotter, LinePlot, and dashboard
+   interfaces. Keep ContourPlot in a 2D visualization extension.
+
+Components that should remain project-specific:
+- 1D and 2D analytical solution kernels.
+- 1D versus 2D Field and Mesh storage contracts.
+- ADI sweep assemblers, ADI boundary enforcement, and ADI state management.
+- Scheme-specific 1D/2D matrix assembly where stencil dimensions differ.
+
+COMPATIBILITY RISKS BEFORE SHARING CODE
+---------------------------------------
+- Identical filenames do not establish identical APIs or data layouts.
+- The current Field uses [j][i] row-major indexing; the other project is 1D.
+- Current matrix paths are split into ADI_Matrix and GaussianElimination_Matrix.
+- Current plotting includes 2D contours; the other map only documents line plotting.
+- Configuration names differ: current Width/Height, alpha, Nx/Ny; other Length, nu,
+  and N. A shared library should consume parameter concepts instead of project-specific
+  SolverInputs names.
+- CMake target names and source lists differ. Extracted libraries should expose stable
+  targets and public include directories rather than copying one project's paths.
+- Boundary condition enum support may exceed the conditions actually implemented by
+  a solver path; preserve that distinction in a shared API.
+
+SUMMARY FOR THE OTHER AI MODEL
+------------------------------
+The two projects share the same high-level CFD solver architecture and many supporting
+modules: boundary metadata, field/mesh/geometry concepts, four named time schemes,
+Gaussian and Thomas solvers, output naming/writing, utilities, plotting foundations,
+simulation context, and analytical verification interfaces. The current project is a
+2D extension with rectangular mesh semantics, four wall boundaries, ADI line solves,
+ADI-specific matrix storage, directional assemblers, and contour plotting. The safest
+first shared GitHub libraries are utilities, linear solvers, output/path helpers, and
+plotting process infrastructure. Core field/mesh classes, analytical kernels, and ADI
+assemblers should remain dimension-specific until their interfaces are deliberately
+generalized.
